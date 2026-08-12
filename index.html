@@ -50,6 +50,7 @@ body{font-family:'Poppins',sans-serif;background:var(--cream);min-height:100vh;o
 .form-label{display:block;font-weight:700;margin:16px 0 8px;color:var(--g);font-size:13.5px}
 .date-chip{border:1.5px solid #ccc;border-radius:9px;padding:11px 14px;cursor:pointer;font-size:13.5px;display:flex;justify-content:space-between;margin-bottom:8px}
 .date-chip.sel{border-color:var(--g);background:#eef4f0;font-weight:600}
+.dot-active{background:#1a3a2a!important;color:#c8a84b!important}
 
 .enum-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .enum-btn{border:1.5px solid #ccc;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-family:inherit;background:#fff;color:#333;transition:all .2s}
@@ -189,6 +190,14 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
     <div class="panel active" id="panelIsi">
       <div class="form-label">Tarikh Amalan *</div>
       <div id="dateChips"></div>
+      <div id="tarikhTerpilihPanel" style="display:none;background:#eef4f0;border:1.5px solid #4a7c59;border-radius:10px;padding:12px 14px;margin-top:10px;margin-bottom:4px;flex-direction:row;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:11px;color:#666;margin-bottom:2px">Tarikh dipilih</div>
+          <div id="tarikhTerpilihLabel" style="font-weight:700;font-size:15px;color:#1a3a2a"></div>
+        </div>
+        <div id="tarikhTerpilihBadge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600"></div>
+      </div>
+      <input type="hidden" id="tarikhTerpilihVal">
 
       <div class="form-label">A. Solat Fardhu Awal Waktu Berjemaah *</div>
       <div class="enum-group" id="grpSolat"></div>
@@ -272,7 +281,7 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 // KONFIGURASI — ISI INI SEBELUM DEPLOY
 // ================================================================
 const CLIENT_ID = '734916025169-ifp8t16t17ubnda0mbrnifi9g9flb4tn.apps.googleusercontent.com';
-const SPREADSHEET_ID = '1_AdbCwocF627dHAurscSvZOL9fbPK8Q2JWI3aFCo_ZM';
+const SPREADSHEET_ID = '1pb4Kcw2xUFvk_lL7nyvVOds9uw0O68cqmqEhD_iknoQ';
 const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email';
 
@@ -571,104 +580,127 @@ function binaBorang() {
   const today = new Date();
   today.setHours(0,0,0,0);
 
-  // Tempoh peluang tebus: 27/7/2026 hingga 18/8/2026
-  const TEBUS_MULA = new Date('2026-07-27T00:00:00');
+  const TEBUS_MULA  = new Date('2026-07-27T00:00:00');
   const TEBUS_TAMAT = new Date('2026-08-18T00:00:00');
-
-  // Set tarikh yang sudah diisi oleh pengguna ini
   const sudahIsi = new Set(REKOD_SAYA.map(r => r.tarikhKey));
 
   // Bina senarai tarikh yang boleh dipilih
   const tarikh_boleh = [];
-
-  // Fasa 1: Tarikh tebus (27/7 - 18/8) yang belum melepasi hari ini
   let cur = new Date(TEBUS_MULA);
   while (cur <= today && cur <= TEBUS_TAMAT) {
-    const k = dateToKey(cur);
-    tarikh_boleh.push({ key: k, date: new Date(cur) });
+    tarikh_boleh.push({ key: dateToKey(cur), date: new Date(cur) });
     cur = new Date(cur.getTime() + 86400000);
   }
-
-  // Fasa 2: Tambah semalam & hari semalam normal (selepas 18/8) jika today > TEBUS_TAMAT
   if (today > TEBUS_TAMAT) {
-    const dow = today.getDay();
-    // Hari ini
     tarikh_boleh.push({ key: dateToKey(today), date: new Date(today) });
-    // Semalam
     const semalam = new Date(today.getTime() - 86400000);
     tarikh_boleh.push({ key: dateToKey(semalam), date: semalam });
-    // Kalau Isnin, tambah Sabtu & Ahad
-    if (dow === 1) {
-      const sab = new Date(today.getTime() - 2*86400000);
-      const ahad = new Date(today.getTime() - 86400000);
-      tarikh_boleh.push({ key: dateToKey(sab), date: sab });
+    if (today.getDay() === 1) {
+      tarikh_boleh.push({ key: dateToKey(new Date(today.getTime()-2*86400000)), date: new Date(today.getTime()-2*86400000) });
     }
   }
 
-  // Susun dari terbaru ke terlama, buang duplikat
+  // Buang duplikat, susun terlama → terbaru
   const seen = new Set();
   const unik = tarikh_boleh
     .filter(t => { if(seen.has(t.key)) return false; seen.add(t.key); return true; })
-    .sort((a,b) => b.key.localeCompare(a.key));
+    .sort((a,b) => a.key.localeCompare(b.key));
 
-  // Bina mini-kalender ringkas (status hijau/kosong) di atas senarai
-  const miniKal = document.createElement('div');
-  miniKal.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px';
-  unik.slice().reverse().forEach(t => {
-    const dot = document.createElement('div');
+  // Reset panel tarikh terpilih
+  const panel = document.getElementById('tarikhTerpilihPanel');
+  const valInput = document.getElementById('tarikhTerpilihVal');
+  panel.style.display = 'none';
+  valInput.value = '';
+
+  // Label legend
+  const legend = document.createElement('div');
+  legend.style.cssText = 'font-size:11px;color:#888;margin-bottom:6px;display:flex;gap:12px;align-items:center';
+  legend.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#7fb08a;display:inline-block"></span>Sudah isi</span>' +
+    '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#e0e0e0;display:inline-block"></span>Belum isi</span>' +
+    '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;border:2px solid #c8a84b;display:inline-block"></span>Hari ini</span>';
+  el.appendChild(legend);
+
+  // Grid dot — bulan dikumpulkan
+  let bulanSemasa = '';
+  let grid = null;
+
+  unik.forEach(t => {
+    const bln = t.key.substring(0,7); // YYYY-MM
     const dah = sudahIsi.has(t.key);
-    const [,bln,hr] = t.key.split('-');
-    dot.style.cssText = `
-      width:36px;height:36px;border-radius:8px;display:flex;align-items:center;
-      justify-content:center;font-size:11px;font-weight:600;cursor:default;
-      background:${dah?'#7fb08a':'#eee'};color:${dah?'#fff':'#aaa'};
-    `;
-    dot.title = t.key + (dah?' ✓ Sudah diisi':'');
+    const isToday = t.key === dateToKey(today);
+    const [,blnNum,hr] = t.key.split('-');
+    const blnNama = ['','Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogos','Sep','Okt','Nov','Dis'][parseInt(blnNum)];
+
+    // Header bulan baru
+    if (bln !== bulanSemasa) {
+      bulanSemasa = bln;
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin-top:8px;margin-bottom:4px;width:100%';
+      hdr.textContent = blnNama + ' ' + t.key.substring(0,4);
+      el.appendChild(hdr);
+
+      grid = document.createElement('div');
+      grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px';
+      el.appendChild(grid);
+    }
+
+    // Dot butang
+    const dot = document.createElement('button');
+    dot.style.cssText = [
+      'width:38px;height:38px;border-radius:9px;border:none;cursor:pointer',
+      'font-size:12px;font-weight:700;transition:all .15s;position:relative',
+      dah ? 'background:#7fb08a;color:#fff' : 'background:#e8e8e8;color:#888',
+      isToday ? 'box-shadow:0 0 0 2px #c8a84b' : ''
+    ].join(';');
     dot.textContent = parseInt(hr);
-    miniKal.appendChild(dot);
-  });
+    dot.title = HARI[t.date.getDay()] + ', ' + parseInt(hr) + '/' + parseInt(blnNum) + (dah ? ' ✓' : '');
 
-  const miniWrap = document.createElement('div');
-  miniWrap.style.cssText = 'margin-bottom:8px';
-  const miniLabel = document.createElement('div');
-  miniLabel.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px';
-  miniLabel.innerHTML = '🟢 Sudah diisi &nbsp; ⬜ Belum diisi';
-  miniWrap.appendChild(miniLabel);
-  miniWrap.appendChild(miniKal);
-  el.appendChild(miniWrap);
+    dot.onclick = () => {
+      // Highlight dot terpilih
+      el.querySelectorAll('.dot-active').forEach(d => {
+        const wasDah = d.dataset.dah === '1';
+        d.style.background = wasDah ? '#7fb08a' : '#e8e8e8';
+        d.style.color = wasDah ? '#fff' : '#888';
+        d.style.transform = '';
+        d.classList.remove('dot-active');
+      });
+      dot.classList.add('dot-active');
+      dot.style.background = '#1a3a2a';
+      dot.style.color = '#c8a84b';
+      dot.style.transform = 'scale(1.1)';
 
-  // Bina chip pilihan tarikh
-  unik.forEach((t, i) => {
-    const d = t.date;
-    const dah = sudahIsi.has(t.key);
-    const hariNama = HARI[d.getDay()];
-    const labelTarikh = `${hariNama}, ${d.getDate()}/${d.getMonth()+1}`;
-
-    const div = document.createElement('div');
-    div.className = 'date-chip' + (i===0?' sel':'');
-    div.dataset.tarikh = t.key;
-
-    // Label + badge status
-    const span = document.createElement('span');
-    span.textContent = labelTarikh;
-    const badge = document.createElement('span');
-    badge.style.cssText = `font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;background:${dah?'#d9ead3':'#f4f4f4'};color:${dah?'#274e13':'#999'}`;
-    badge.textContent = dah ? '✓ Dah Isi' : 'Belum';
-    div.appendChild(span);
-    div.appendChild(badge);
-
-    div.onclick = () => {
-      el.querySelectorAll('.date-chip').forEach(x=>x.classList.remove('sel'));
-      div.classList.add('sel');
-      // Notif sekiranya tarikh ini dah ada rekod
+      // Update panel terpilih
+      valInput.value = t.key;
+      document.getElementById('tarikhTerpilihLabel').textContent = HARI[t.date.getDay()] + ', ' + parseInt(hr) + '/' + parseInt(blnNum) + '/' + t.key.substring(0,4);
+      const badge = document.getElementById('tarikhTerpilihBadge');
       if (dah) {
+        badge.textContent = '⚠️ Sudah ada rekod';
+        badge.style.background = '#fce5cd';
+        badge.style.color = '#7f4f00';
         tunjukMsg('⚠️ Tarikh ini sudah ada rekod. Jika hantar, rekod lama akan ditindih dengan yang baharu.','warn');
       } else {
+        badge.textContent = '✓ Belum diisi';
+        badge.style.background = '#d9ead3';
+        badge.style.color = '#274e13';
         const msgBox = document.getElementById('msgBox');
         if (msgBox) { msgBox.textContent=''; msgBox.className='msg'; }
       }
+      panel.style.display = 'flex';
     };
-    el.appendChild(div);
+
+    dot.dataset.dah = dah ? '1' : '0';
+    grid.appendChild(dot);
+  });
+
+  // Auto-pilih hari ini
+  const todayKey = dateToKey(today);
+  const todayDot = el.querySelector(`button[title^="${HARI[today.getDay()]}"]`);
+  // Cari dot hari ini dan klik
+  el.querySelectorAll('button').forEach(btn => {
+    const t = unik.find(u => u.key === todayKey);
+    if (t && btn.textContent == parseInt(todayKey.split('-')[2]) && btn.title.includes(HARI[today.getDay()])) {
+      btn.click();
+    }
   });
 
   // Bina semua 4 kumpulan checklist
@@ -702,9 +734,8 @@ function getDipilih(id) {
 // HANTAR REKOD
 // ================================================================
 async function hantar() {
-  const tarikhEl = document.querySelector('#dateChips .date-chip.sel');
-  if (!tarikhEl) { tunjukMsg('Sila pilih tarikh amalan.','err'); return; }
-  const tarikh = tarikhEl.dataset.tarikh;
+  const tarikh = document.getElementById('tarikhTerpilihVal').value;
+  if (!tarikh) { tunjukMsg('Sila pilih tarikh amalan terlebih dahulu.','err'); return; }
 
   const solat = getDipilih('grpSolat');
   const munajat = getDipilih('grpMunajat');
