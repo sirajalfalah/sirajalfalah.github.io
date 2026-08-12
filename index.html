@@ -137,7 +137,6 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 <body>
 
 <div id="offlineBanner">⚠️ Tiada sambungan internet. Data tidak akan disimpan.</div>
-<div id="debugPanel" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:10px;font-size:11px;line-height:1.7;font-family:monospace;color:#333;white-space:pre-wrap;word-break:break-all"></div>
 
 <!-- Modal Amalan Tarikh -->
 <div id="modalAmalan" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;padding:16px">
@@ -522,22 +521,6 @@ async function muatRekodSaya() {
       }))
       .filter(r => r._emel === USER.emel && r.tarikhKey);
 
-    // DEBUG — papar maklumat diagnosis (boleh buang selepas confirmed OK)
-    const dbg = document.getElementById('debugPanel');
-    if (dbg) {
-      const totalRows = rows.length - 1;
-      const sample3 = rows.slice(1,4).map(r => (r[iEmel]||'(kosong)').substring(0,40));
-      dbg.innerHTML = `
-        <b>Diagnosis muatRekodSaya:</b><br>
-        Header ditemui: iEmel=${iEmel}, iTarikh=${iTarikh}, iSolat=${iSolat}<br>
-        USER.emel: <b>${USER.emel}</b><br>
-        Total baris dalam sheet: ${totalRows}<br>
-        3 nilai emel pertama dalam sheet: ${sample3.map(e=>`"${e}"`).join(' | ')}<br>
-        Rekod yang sepadan (REKOD_SAYA.length): <b>${REKOD_SAYA.length}</b><br>
-        ${REKOD_SAYA.length > 0 ? 'tarikhKey rekod pertama: '+REKOD_SAYA[0].tarikhKey : '⚠️ Tiada rekod sepadan — emel tak match atau tarikh gagal parse'}
-      `;
-      dbg.style.display = 'block';
-    }
 
   } catch(e) {
     console.error('Gagal muatkan rekod:', e);
@@ -582,37 +565,108 @@ function hariIniKey() {
 // BINA BORANG
 // ================================================================
 function binaBorang() {
-  // Date chips
-  const dow = new Date().getDay();
-  const chips = [];
-  const today = new Date();
-  function addChip(offset, label) {
-    const d = new Date(today.getTime() - offset*86400000);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const hariLabel = HARI[d.getDay()];
-    chips.push({tarikh:key, label:`${label} - ${hariLabel}, ${d.getDate()}/${d.getMonth()+1}`});
-  }
-  // Tempoh peluang pembetulan: boleh isi dari 27/7/2026
-  const mulaKey = '2026-07-27';
-  const hariIni = new Date();
-  const mula = new Date('2026-07-27');
-  if (hariIni >= mula) {
-    // Bina chips untuk 3 hari ke belakang sahaja (lebih fokus)
-    addChip(0, 'Hari Ini');
-    if (dow === 1) { addChip(1,'Semalam'); addChip(2,'Kelmarin'); }
-    else addChip(1,'Semalam');
-  }
-
   const el = document.getElementById('dateChips');
   el.innerHTML = '';
-  chips.forEach((c,i) => {
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  // Tempoh peluang tebus: 27/7/2026 hingga 18/8/2026
+  const TEBUS_MULA = new Date('2026-07-27T00:00:00');
+  const TEBUS_TAMAT = new Date('2026-08-18T00:00:00');
+
+  // Set tarikh yang sudah diisi oleh pengguna ini
+  const sudahIsi = new Set(REKOD_SAYA.map(r => r.tarikhKey));
+
+  // Bina senarai tarikh yang boleh dipilih
+  const tarikh_boleh = [];
+
+  // Fasa 1: Tarikh tebus (27/7 - 18/8) yang belum melepasi hari ini
+  let cur = new Date(TEBUS_MULA);
+  while (cur <= today && cur <= TEBUS_TAMAT) {
+    const k = dateToKey(cur);
+    tarikh_boleh.push({ key: k, date: new Date(cur) });
+    cur = new Date(cur.getTime() + 86400000);
+  }
+
+  // Fasa 2: Tambah semalam & hari semalam normal (selepas 18/8) jika today > TEBUS_TAMAT
+  if (today > TEBUS_TAMAT) {
+    const dow = today.getDay();
+    // Hari ini
+    tarikh_boleh.push({ key: dateToKey(today), date: new Date(today) });
+    // Semalam
+    const semalam = new Date(today.getTime() - 86400000);
+    tarikh_boleh.push({ key: dateToKey(semalam), date: semalam });
+    // Kalau Isnin, tambah Sabtu & Ahad
+    if (dow === 1) {
+      const sab = new Date(today.getTime() - 2*86400000);
+      const ahad = new Date(today.getTime() - 86400000);
+      tarikh_boleh.push({ key: dateToKey(sab), date: sab });
+    }
+  }
+
+  // Susun dari terbaru ke terlama, buang duplikat
+  const seen = new Set();
+  const unik = tarikh_boleh
+    .filter(t => { if(seen.has(t.key)) return false; seen.add(t.key); return true; })
+    .sort((a,b) => b.key.localeCompare(a.key));
+
+  // Bina mini-kalender ringkas (status hijau/kosong) di atas senarai
+  const miniKal = document.createElement('div');
+  miniKal.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px';
+  unik.slice().reverse().forEach(t => {
+    const dot = document.createElement('div');
+    const dah = sudahIsi.has(t.key);
+    const [,bln,hr] = t.key.split('-');
+    dot.style.cssText = `
+      width:36px;height:36px;border-radius:8px;display:flex;align-items:center;
+      justify-content:center;font-size:11px;font-weight:600;cursor:default;
+      background:${dah?'#7fb08a':'#eee'};color:${dah?'#fff':'#aaa'};
+    `;
+    dot.title = t.key + (dah?' ✓ Sudah diisi':'');
+    dot.textContent = parseInt(hr);
+    miniKal.appendChild(dot);
+  });
+
+  const miniWrap = document.createElement('div');
+  miniWrap.style.cssText = 'margin-bottom:8px';
+  const miniLabel = document.createElement('div');
+  miniLabel.style.cssText = 'font-size:11px;color:#888;margin-bottom:4px';
+  miniLabel.innerHTML = '🟢 Sudah diisi &nbsp; ⬜ Belum diisi';
+  miniWrap.appendChild(miniLabel);
+  miniWrap.appendChild(miniKal);
+  el.appendChild(miniWrap);
+
+  // Bina chip pilihan tarikh
+  unik.forEach((t, i) => {
+    const d = t.date;
+    const dah = sudahIsi.has(t.key);
+    const hariNama = HARI[d.getDay()];
+    const labelTarikh = `${hariNama}, ${d.getDate()}/${d.getMonth()+1}`;
+
     const div = document.createElement('div');
     div.className = 'date-chip' + (i===0?' sel':'');
-    div.textContent = c.label;
-    div.dataset.tarikh = c.tarikh;
+    div.dataset.tarikh = t.key;
+
+    // Label + badge status
+    const span = document.createElement('span');
+    span.textContent = labelTarikh;
+    const badge = document.createElement('span');
+    badge.style.cssText = `font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;background:${dah?'#d9ead3':'#f4f4f4'};color:${dah?'#274e13':'#999'}`;
+    badge.textContent = dah ? '✓ Dah Isi' : 'Belum';
+    div.appendChild(span);
+    div.appendChild(badge);
+
     div.onclick = () => {
       el.querySelectorAll('.date-chip').forEach(x=>x.classList.remove('sel'));
       div.classList.add('sel');
+      // Notif sekiranya tarikh ini dah ada rekod
+      if (dah) {
+        tunjukMsg('⚠️ Tarikh ini sudah ada rekod. Jika hantar, rekod lama akan ditindih dengan yang baharu.','warn');
+      } else {
+        const msgBox = document.getElementById('msgBox');
+        if (msgBox) { msgBox.textContent=''; msgBox.className='msg'; }
+      }
     };
     el.appendChild(div);
   });
@@ -622,6 +676,10 @@ function binaBorang() {
   binaGroup('grpMunajat', PILIHAN.munajat);
   binaGroup('grpQuran', PILIHAN.quran);
   binaGroup('grpHindari', PILIHAN.hindari);
+}
+
+function dateToKey(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
 function binaGroup(id, pilihan) {
@@ -704,9 +762,10 @@ async function hantar() {
       tunjukMsg('✅ Rekod berjaya disimpan. Terima kasih!','ok');
     }
 
-    // Muat semula rekod dari sheet, kemudian segarkan dashboard
+    // Muat semula rekod dari sheet, kemudian segarkan dashboard dan borang
     await muatRekodSaya();
     muatDashboard();
+    binaBorang(); // refresh badge hijau/kosong pada senarai tarikh
 
     // Reset semua pilihan amalan & catatan supaya borang bersih untuk entri seterusnya
     resetBorang();
