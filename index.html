@@ -303,8 +303,42 @@ const EMOJI_TAHAP = ["🔥","🥉","🥈","🥇","✨"];
 let tokenClient;
 let accessToken = null;
 
+// Kunci storan untuk token
+const TOKEN_KEY = 'siraj_token';
+const TOKEN_EXP_KEY = 'siraj_token_exp';
+
+// Simpan token + masa luput ke localStorage
+function simpanToken(token, expiresInSec) {
+  accessToken = token;
+  const expAt = Date.now() + (expiresInSec - 60) * 1000; // tolak 60s buffer
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(TOKEN_EXP_KEY, String(expAt));
+  } catch(e) {}
+}
+
+// Ambil token tersimpan jika masih sah
+function tokenTersimpan() {
+  try {
+    const t = localStorage.getItem(TOKEN_KEY);
+    const exp = parseInt(localStorage.getItem(TOKEN_EXP_KEY) || '0', 10);
+    if (t && exp && Date.now() < exp) return t;
+  } catch(e) {}
+  return null;
+}
+
+function buangToken() {
+  accessToken = null;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_EXP_KEY);
+  } catch(e) {}
+}
+
+// Login manual (butang) — minta consent hanya jika perlu
 function mulaLogin() {
-  tokenClient.requestAccessToken({prompt: 'consent'});
+  // prompt kosong = Google skip skrin consent jika pengguna sudah beri kebenaran sebelum ini
+  tokenClient.requestAccessToken({prompt: ''});
 }
 
 function onGisLoad() {
@@ -312,27 +346,53 @@ function onGisLoad() {
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: async (resp) => {
-      if (resp.error) { console.error(resp); return; }
-      accessToken = resp.access_token;
+      if (resp.error) {
+        console.error(resp);
+        // Jika silent gagal (perlu interaksi), cuba dengan consent
+        if (resp.error === 'interaction_required' || resp.error === 'login_required') {
+          tokenClient.requestAccessToken({prompt: 'consent'});
+        }
+        return;
+      }
+      simpanToken(resp.access_token, resp.expires_in || 3600);
       await muatDataPengguna();
     },
   });
+
+  // Cuba guna token tersimpan dulu — elak login berulang selepas refresh
+  const t = tokenTersimpan();
+  if (t) {
+    accessToken = t;
+    muatDataPengguna().catch(() => {
+      // Token rosak/luput di sisi Google — buang & minta login
+      buangToken();
+      tunjukAuthScreen();
+    });
+  }
+}
+
+function tunjukAuthScreen() {
+  document.getElementById('splash').style.display='none';
+  document.getElementById('authScreen').style.cssText='display:flex';
 }
 
 async function apiGet(url) {
   const r = await fetch(url, {headers: {Authorization: `Bearer ${accessToken}`}});
+  if (r.status === 401) { buangToken(); throw new Error('SESI_TAMAT'); }
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
 async function apiPut(url, body) {
   const r = await fetch(url, {method:'PUT', headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if (r.status === 401) { buangToken(); throw new Error('SESI_TAMAT'); }
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
 async function apiPost(url, body) {
   const r = await fetch(url, {method:'POST', headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if (r.status === 401) { buangToken(); throw new Error('SESI_TAMAT'); }
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -600,7 +660,15 @@ async function hantar() {
 
   } catch(e) {
     console.error(e);
-    tunjukMsg('⚠️ Gagal menyimpan rekod. Sila semak sambungan internet dan cuba sekali lagi.','err');
+    if (e.message === 'SESI_TAMAT') {
+      tunjukMsg('⚠️ Sesi telah tamat. Sila log masuk semula.','err');
+      setTimeout(() => { buangToken(); tunjukAuthScreen(); }, 1500);
+    } else {
+      // Papar sebab sebenar dari Google supaya mudah dikesan
+      let sebab = e.message || 'Ralat tidak diketahui';
+      try { const j = JSON.parse(sebab); if (j.error && j.error.message) sebab = j.error.message; } catch(_) {}
+      tunjukMsg('⚠️ Gagal menyimpan rekod: ' + sebab.substring(0,200),'err');
+    }
   }
 
   btn.disabled = false; btn.textContent = 'Hantar Rekod';
@@ -874,7 +942,8 @@ window.addEventListener('online',()=>document.getElementById('offlineBanner').st
 window.onload = () => {
   // Tunjuk splash selama minimum 1.5 saat
   setTimeout(() => {
-    if (!accessToken) {
+    // Jika tiada token (tersimpan pun tiada), tunjuk skrin log masuk
+    if (!accessToken && !tokenTersimpan()) {
       document.getElementById('splash').style.opacity='0';
       setTimeout(()=>{
         document.getElementById('splash').style.display='none';
