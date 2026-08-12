@@ -548,13 +548,27 @@ async function muatRekodSaya() {
 function tarikhKeKey(val) {
   if (!val) return null;
   if (typeof val === 'string') {
-    // Cuba pelbagai format
-    const m = val.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+    val = val.trim();
+    // Format YYYY-MM-DD (dari kod kita sendiri semasa hantar)
+    if (/^\d{4}-\d{2}-\d{2}/.test(val)) return val.substring(0, 10);
+    // Format dengan pemisah: 7/31/2026 (US/Google Sheets) atau 31/7/2026 (MY)
+    const m = val.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/);
     if (m) {
-      const y = m[3].length===2 ? '20'+m[3] : m[3];
-      return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      let a = parseInt(m[1]), b = parseInt(m[2]), c = parseInt(m[3]);
+      let thn, bln, hari;
+      if (a > 31 || m[1].length === 4) {
+        thn = a; bln = b; hari = c;
+      } else if (c > 31 || m[3].length === 4) {
+        thn = c;
+        if (a > 12) { hari = a; bln = b; }
+        else if (b > 12) { bln = a; hari = b; }
+        else { bln = a; hari = b; }
+      } else {
+        return null;
+      }
+      if (bln < 1 || bln > 12 || hari < 1 || hari > 31) return null;
+      return thn + '-' + String(bln).padStart(2,'0') + '-' + String(hari).padStart(2,'0');
     }
-    if (val.match(/^\d{4}-\d{2}-\d{2}/)) return val.substring(0,10);
   }
   return null;
 }
