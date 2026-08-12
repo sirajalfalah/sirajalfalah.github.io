@@ -96,7 +96,13 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 .cal-lbl{text-align:center;font-size:10px;color:#999;font-weight:600}
 .cal-cell{aspect-ratio:1;border-radius:6px;background:#eee;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999}
 .cal-cell.filled{background:#7fb08a;color:#fff;font-weight:600}
+.cal-cell.filled:hover{background:#5a9a6a;transform:scale(1.1);transition:all .15s}
 .cal-cell.today{border:2px solid var(--gold)}
+.modal-seksyen{margin-bottom:14px}
+.modal-tajuk{font-size:12px;font-weight:700;color:#1a3a2a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.modal-chips{display:flex;flex-wrap:wrap;gap:5px}
+.modal-chip{background:#e8f4ec;color:#1a3a2a;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500}
+.modal-catatan{background:#fffbf0;border-left:3px solid var(--gold);padding:8px 12px;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.5}
 
 /* Modal dalil */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(12,46,34,.75);z-index:1000;align-items:center;justify-content:center;padding:20px}
@@ -131,6 +137,20 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 <body>
 
 <div id="offlineBanner">⚠️ Tiada sambungan internet. Data tidak akan disimpan.</div>
+
+<!-- Modal Amalan Tarikh -->
+<div id="modalAmalan" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:420px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.3)">
+    <div style="background:#1a3a2a;border-radius:16px 16px 0 0;padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="color:#c8a84b;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase">Rekod Amalan</div>
+        <div id="modalTarikh" style="color:#fff;font-size:17px;font-weight:700;margin-top:2px"></div>
+      </div>
+      <button onclick="tutupModal()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+    <div id="modalKandungan" style="padding:16px 20px 20px"></div>
+  </div>
+</div>
 
 <!-- SPLASH -->
 <div id="splash">
@@ -472,7 +492,7 @@ function hideSplash() {
 async function muatRekodSaya() {
   try {
     const data = await apiGet(
-      `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Respons%20Borang`
+      `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent('Respons Borang')}`
     );
     const rows = data.values || [];
     if (rows.length < 2) { REKOD_SAYA = []; return; }
@@ -643,9 +663,10 @@ async function hantar() {
       );
       tunjukMsg('🔄 Rekod untuk tarikh ini SUDAH WUJUD — data lama telah ditindih dengan yang baharu.','warn');
     } else {
-      // Tambah rekod baharu
+      // Tambah rekod baharu — encode nama sheet + range sepenuhnya
+      const appendRange = encodeURIComponent('Respons Borang!A1');
       await apiPost(
-        `${BASE}/values/Respons%20Borang!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+        `${BASE}/values/${appendRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
         {majorDimension:'ROWS', values:[nilaiRow]}
       );
       tunjukMsg('✅ Rekod berjaya disimpan. Terima kasih!','ok');
@@ -906,9 +927,50 @@ function muatKal(mod) {
     const cell=document.createElement('div');
     cell.className='cal-cell'+(tarikhSet[k]?' filled':'')+(k===todayKey?' today':'');
     cell.textContent=cur.getDate();
+    if (tarikhSet[k]) {
+      cell.title = 'Tekan untuk lihat amalan';
+      cell.style.cursor = 'pointer';
+      cell.onclick = () => tunjukAmalanTarikh(k);
+    }
     grid.appendChild(cell);
     cur=new Date(cur.getTime()+86400000);
   }
+}
+
+// ================================================================
+// PAPAR AMALAN PADA TARIKH TERTENTU (tekan sel kalender)
+// ================================================================
+function tunjukAmalanTarikh(tarikhKey) {
+  const rekod = REKOD_SAYA.find(r => r.tarikhKey === tarikhKey);
+  if (!rekod) return;
+
+  const [thn, bln, hari] = tarikhKey.split('-');
+  const tarikhLabel = `${parseInt(hari)}/${parseInt(bln)}/${thn}`;
+  const hariNama = HARI[new Date(tarikhKey+'T00:00:00').getDay()];
+
+  function bahagian(tajuk, emoji, items) {
+    if (!items || !items.length) return '';
+    return `<div class="modal-seksyen">
+      <div class="modal-tajuk">${emoji} ${tajuk}</div>
+      <div class="modal-chips">${items.map(i=>`<span class="modal-chip">${i}</span>`).join('')}</div>
+    </div>`;
+  }
+
+  const kandungan = `
+    ${bahagian('Solat Fardhu Berjemaah','🕌', rekod.solat)}
+    ${bahagian('Munajat Hamba','🌙', rekod.munajat)}
+    ${bahagian('Bacaan Al-Quran','📖', rekod.quran)}
+    ${bahagian('Benteng Diri','🛡️', rekod.hindari)}
+    ${rekod.catatan ? `<div class="modal-seksyen"><div class="modal-tajuk">📝 Muhasabah</div><div class="modal-catatan">${rekod.catatan}</div></div>` : ''}
+  `;
+
+  document.getElementById('modalTarikh').textContent = `${hariNama}, ${tarikhLabel}`;
+  document.getElementById('modalKandungan').innerHTML = kandungan;
+  document.getElementById('modalAmalan').style.display = 'flex';
+}
+
+function tutupModal() {
+  document.getElementById('modalAmalan').style.display = 'none';
 }
 
 // ================================================================
