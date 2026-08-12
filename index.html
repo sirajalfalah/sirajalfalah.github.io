@@ -137,6 +137,7 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 <body>
 
 <div id="offlineBanner">⚠️ Tiada sambungan internet. Data tidak akan disimpan.</div>
+<div id="debugPanel" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:10px;font-size:11px;line-height:1.7;font-family:monospace;color:#333;white-space:pre-wrap;word-break:break-all"></div>
 
 <!-- Modal Amalan Tarikh -->
 <div id="modalAmalan" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;padding:16px">
@@ -520,6 +521,23 @@ async function muatRekodSaya() {
         rowIdx: idx + 2   // +1 untuk header, +1 kerana sheet 1-indexed
       }))
       .filter(r => r._emel === USER.emel && r.tarikhKey);
+
+    // DEBUG — papar maklumat diagnosis (boleh buang selepas confirmed OK)
+    const dbg = document.getElementById('debugPanel');
+    if (dbg) {
+      const totalRows = rows.length - 1;
+      const sample3 = rows.slice(1,4).map(r => (r[iEmel]||'(kosong)').substring(0,40));
+      dbg.innerHTML = `
+        <b>Diagnosis muatRekodSaya:</b><br>
+        Header ditemui: iEmel=${iEmel}, iTarikh=${iTarikh}, iSolat=${iSolat}<br>
+        USER.emel: <b>${USER.emel}</b><br>
+        Total baris dalam sheet: ${totalRows}<br>
+        3 nilai emel pertama dalam sheet: ${sample3.map(e=>`"${e}"`).join(' | ')}<br>
+        Rekod yang sepadan (REKOD_SAYA.length): <b>${REKOD_SAYA.length}</b><br>
+        ${REKOD_SAYA.length > 0 ? 'tarikhKey rekod pertama: '+REKOD_SAYA[0].tarikhKey : '⚠️ Tiada rekod sepadan — emel tak match atau tarikh gagal parse'}
+      `;
+      dbg.style.display = 'block';
+    }
 
   } catch(e) {
     console.error('Gagal muatkan rekod:', e);
