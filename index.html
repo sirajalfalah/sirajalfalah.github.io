@@ -63,6 +63,7 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 .msg{margin-top:14px;padding:12px;border-radius:8px;font-size:13.5px;display:none;line-height:1.5}
 .msg.ok{background:#d9ead3;color:#274e13;display:block}
 .msg.err{background:#f4cccc;color:#990000;display:block}
+.msg.warn{background:#fce5cd;color:#7f4f00;display:block;font-weight:600}
 
 /* Dashboard */
 .streak-row{display:flex;gap:12px;margin-bottom:16px}
@@ -428,17 +429,17 @@ async function muatRekodSaya() {
     function pecah(v) { return (v||'').split(',').map(s=>s.trim()).filter(Boolean); }
 
     REKOD_SAYA = rows.slice(1)
-      .filter(r => (r[iEmel]||'').toLowerCase() === USER.emel)
-      .map(r => ({
+      .map((r, idx) => ({
+        _emel: (r[iEmel]||'').toLowerCase(),
         tarikhKey: tarikhKeKey(r[iTarikh]),
         solat: pecah(r[iSolat]),
         munajat: pecah(r[iMunajat]),
         quran: pecah(r[iQuran]),
         hindari: pecah(r[iHindari]),
         catatan: r[iCatatan] || '',
-        rowIdx: rows.indexOf(r) + 1
+        rowIdx: idx + 2   // +1 untuk header, +1 kerana sheet 1-indexed
       }))
-      .filter(r => r.tarikhKey);
+      .filter(r => r._emel === USER.emel && r.tarikhKey);
 
   } catch(e) {
     console.error('Gagal muatkan rekod:', e);
@@ -573,36 +574,45 @@ async function hantar() {
 
     const BASE = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}`;
 
-    if (rekodSediaAda && tarikh === hariIniKey()) {
-      // Kemas kini rekod hari ini
+    if (rekodSediaAda) {
+      // Rekod untuk tarikh ini sudah wujud — tindih (kemas kini) baris sedia ada
       const range = `Respons Borang!A${rekodSediaAda.rowIdx}`;
-      await fetch(`${BASE}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
-        method:'PUT',
-        headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
-        body: JSON.stringify({range, majorDimension:'ROWS', values:[nilaiRow]})
-      });
-      tunjukMsg('😊 Rekod hari ini berjaya dikemaskini!','ok');
-    } else if (rekodSediaAda) {
-      tunjukMsg('😊 Rekod untuk tarikh ini sudah pun disimpan. Rekod anda selamat!','ok');
+      await apiPut(
+        `${BASE}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+        {range, majorDimension:'ROWS', values:[nilaiRow]}
+      );
+      tunjukMsg('🔄 Rekod untuk tarikh ini SUDAH WUJUD — data lama telah ditindih dengan yang baharu.','warn');
     } else {
       // Tambah rekod baharu
-      await fetch(`${BASE}/values/Respons%20Borang!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
-        method:'POST',
-        headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
-        body: JSON.stringify({majorDimension:'ROWS', values:[nilaiRow]})
-      });
-      tunjukMsg('😊 Rekod berjaya disimpan. Terima kasih!','ok');
+      await apiPost(
+        `${BASE}/values/Respons%20Borang!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+        {majorDimension:'ROWS', values:[nilaiRow]}
+      );
+      tunjukMsg('✅ Rekod berjaya disimpan. Terima kasih!','ok');
     }
 
-    // Muat semula rekod
+    // Muat semula rekod dari sheet, kemudian segarkan dashboard
     await muatRekodSaya();
+    muatDashboard();
+
+    // Reset semua pilihan amalan & catatan supaya borang bersih untuk entri seterusnya
+    resetBorang();
 
   } catch(e) {
     console.error(e);
-    tunjukMsg('😊 Rekod mungkin sudah wujud atau berlaku gangguan seketika. Cuba sekali lagi.','err');
+    tunjukMsg('⚠️ Gagal menyimpan rekod. Sila semak sambungan internet dan cuba sekali lagi.','err');
   }
 
   btn.disabled = false; btn.textContent = 'Hantar Rekod';
+}
+
+// Kosongkan semua butang terpilih & catatan (dipanggil selepas hantar berjaya)
+function resetBorang() {
+  ['grpSolat','grpMunajat','grpQuran','grpHindari'].forEach(id => {
+    document.getElementById(id).querySelectorAll('.enum-btn.sel').forEach(b => b.classList.remove('sel'));
+  });
+  const c = document.getElementById('catatan');
+  if (c) c.value = '';
 }
 
 function tunjukMsg(txt,cls) {
