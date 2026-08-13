@@ -133,6 +133,41 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 
 /* Offline banner */
 #offlineBanner{display:none;position:fixed;top:0;left:0;right:0;background:#990000;color:#fff;text-align:center;padding:8px;font-size:13px;z-index:9997}
+
+/* ---- Quran Extra: Juzu Slider ---- */
+.q-extra{margin-top:10px;display:flex;flex-direction:column;gap:14px}
+.q-block{background:#f9f6ef;border:1.5px solid #e8e0cc;border-radius:10px;padding:12px 14px}
+.q-label{font-size:12px;font-weight:700;color:var(--g);margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px}
+.q-val{font-size:22px;font-weight:700;color:var(--g);display:inline;margin-left:6px}
+.q-unit{font-size:12px;color:#888;margin-left:2px}
+
+/* Slider */
+.q-slider-wrap{padding:4px 2px}
+.q-slider{width:100%;-webkit-appearance:none;appearance:none;height:8px;border-radius:4px;background:linear-gradient(to right,var(--g) 0%,var(--g) 0%,#ddd 0%);outline:none;cursor:pointer}
+.q-slider::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:var(--g);border:3px solid var(--gl);box-shadow:0 2px 6px rgba(0,0,0,.2);cursor:pointer}
+.q-slider::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:var(--g);border:3px solid var(--gl);box-shadow:0 2px 6px rgba(0,0,0,.2);cursor:pointer}
+.q-slider-labels{display:flex;justify-content:space-between;margin-top:6px;padding:0 2px}
+.q-slider-labels span{font-size:10px;color:#aaa;font-weight:600}
+
+/* Stepper mukasurat */
+.q-stepper{display:flex;align-items:center;gap:0;border:1.5px solid #d0c8b0;border-radius:10px;overflow:hidden;background:#fff}
+.q-step-btn{width:52px;height:52px;border:none;background:transparent;font-size:26px;font-weight:300;color:var(--g);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+.q-step-btn:active{background:#eef4f0}
+.q-step-divider{width:1px;background:#e0d8c4;height:32px;flex-shrink:0}
+.q-step-val{flex:1;text-align:center;font-size:26px;font-weight:700;color:var(--g);line-height:52px;min-width:60px}
+.q-step-unit{font-size:12px;color:#999;margin-right:14px;flex-shrink:0}
+
+/* Surah search */
+.q-surah-input{width:100%;padding:12px 14px;border:1.5px solid #d0c8b0;border-radius:10px;font-size:14px;font-family:inherit;background:#fff;box-sizing:border-box;color:#333}
+.q-surah-input:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 3px rgba(26,58,42,.08)}
+.q-dropdown{background:#fff;border:1.5px solid var(--g);border-radius:10px;margin-top:4px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.q-dropdown-item{padding:12px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid #f5f5f5;color:#333}
+.q-dropdown-item:last-child{border-bottom:none}
+.q-dropdown-item:active,.q-dropdown-item:hover{background:#eef4f0;color:var(--g);font-weight:600}
+.q-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.q-chip{background:var(--g);color:var(--gl);padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.q-chip-x{background:rgba(255,255,255,.2);border:none;color:var(--gl);width:18px;height:18px;border-radius:50%;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700;line-height:1;padding:0}
+.q-chip-x:active{background:rgba(255,255,255,.4)}
 </style>
 </head>
 <body>
@@ -208,31 +243,44 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
       <div class="form-label">C. Bacaan Al-Quran *</div>
       <div class="enum-group" id="grpQuran"></div>
 
-      <!-- Juzu' Slider -->
-      <div class="quran-extra" id="quranExtraBox">
-        <div class="quran-extra-label">Juzu' dibaca hari ini: <span id="juzu-val">0</span> Juzu'</div>
-        <input type="range" id="juzuSlider" min="0" max="30" value="0" class="juzu-slider"
-          oninput="document.getElementById('juzu-val').textContent=this.value">
-        <div class="juzu-ticks"><span>0</span><span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span></div>
-
-        <!-- Mukasurat input -->
-        <div class="quran-extra-label" style="margin-top:14px">Mukasurat dibaca hari ini:</div>
-        <div class="muka-stepper">
-          <button type="button" class="muka-btn" onclick="ubahMuka(-1)">−</button>
-          <span id="muka-val">0</span>
-          <button type="button" class="muka-btn" onclick="ubahMuka(1)">+</button>
-          <span class="muka-unit">muka</span>
+      <div class="q-extra">
+        <!-- Juzu' -->
+        <div class="q-block">
+          <div class="q-label">Juzu' dibaca hari ini: <span class="q-val" id="juzuVal">0</span><span class="q-unit"> Juzu'</span></div>
+          <div class="q-slider-wrap">
+            <input type="range" id="juzuSlider" min="0" max="30" value="0" class="q-slider" oninput="kemaskiniJuzu(this.value)">
+            <div class="q-slider-labels">
+              <span>0</span><span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span>
+            </div>
+          </div>
         </div>
-        <div style="font-size:11px;color:#999;margin-top:4px;">Tekan dan tahan untuk tukar cepat</div>
 
-        <!-- Carian Surah -->
-        <div class="quran-extra-label" style="margin-top:14px">Surah yang dibaca (pilihan):</div>
-        <div class="surah-search-wrap">
-          <input type="text" id="surahCarian" placeholder="Cari surah... (contoh: Baqarah)" 
-            class="surah-input" oninput="tapis_surah(this.value)" autocomplete="off">
-          <div id="surahDropdown" class="surah-dropdown" style="display:none"></div>
+        <!-- Mukasurat -->
+        <div class="q-block">
+          <div class="q-label">Mukasurat dibaca hari ini</div>
+          <div class="q-stepper">
+            <button type="button" class="q-step-btn" id="btnMukaMinus"
+              ontouchstart="mulaHold(-1)" ontouchend="hentiHold()"
+              onmousedown="mulaHold(-1)" onmouseup="hentiHold()" onmouseleave="hentiHold()">−</button>
+            <div class="q-step-divider"></div>
+            <div class="q-step-val" id="mukaVal">0</div>
+            <div class="q-step-divider"></div>
+            <button type="button" class="q-step-btn" id="btnMukaPlus"
+              ontouchstart="mulaHold(1)" ontouchend="hentiHold()"
+              onmousedown="mulaHold(1)" onmouseup="hentiHold()" onmouseleave="hentiHold()">+</button>
+            <span class="q-step-unit">muka</span>
+          </div>
         </div>
-        <div id="surahTerpilih" class="surah-terpilih"></div>
+
+        <!-- Surah -->
+        <div class="q-block">
+          <div class="q-label">Surah yang dibaca <span style="font-weight:400;text-transform:none;font-size:11px;color:#999">(pilihan — boleh pilih lebih dari satu)</span></div>
+          <input type="text" id="surahCarian" class="q-surah-input"
+            placeholder="Cari surah... contoh: Baqarah, Kahfi, Mulk"
+            oninput="tapis_surah(this.value)" autocomplete="off" autocorrect="off">
+          <div id="surahDropdown" class="q-dropdown" style="display:none"></div>
+          <div id="surahTerpilih" class="q-chips"></div>
+        </div>
       </div>
 
       <div class="form-label">D. Berjaya Hindari Amalan Buruk *</div>
@@ -768,6 +816,8 @@ function dateToKey(d) {
 }
 
 
+
+
 // ================================================================
 // BACAAN AL-QURAN — FUNGSI EXTRA
 // ================================================================
@@ -791,74 +841,99 @@ const SENARAI_SURAH = [
 ];
 
 let surahTerpilihSet = new Set();
-let mukaTimer = null;
+let holdTimer = null;
+let holdInterval = null;
 
+// Juzu slider — kemaskini gradien warna
+function kemaskiniJuzu(val) {
+  document.getElementById('juzuVal').textContent = val;
+  const pct = (val / 30) * 100;
+  document.getElementById('juzuSlider').style.background =
+    `linear-gradient(to right, var(--g) ${pct}%, #ddd ${pct}%)`;
+}
+
+// Mukasurat stepper — tekan dan tahan berfungsi
 function ubahMuka(delta) {
-  const el = document.getElementById('muka-val');
-  let val = parseInt(el.textContent) + delta;
-  if (val < 0) val = 0;
-  if (val > 604) val = 604;
-  el.textContent = val;
+  const el = document.getElementById('mukaVal');
+  let v = (parseInt(el.textContent) || 0) + delta;
+  if (v < 0) v = 0;
+  if (v > 604) v = 604;
+  el.textContent = v;
 }
 
+function mulaHold(delta) {
+  ubahMuka(delta);
+  holdTimer = setTimeout(() => {
+    holdInterval = setInterval(() => ubahMuka(delta), 80);
+  }, 400);
+}
+
+function hentiHold() {
+  clearTimeout(holdTimer);
+  clearInterval(holdInterval);
+  holdTimer = null;
+  holdInterval = null;
+}
+
+// Surah search
 function tapis_surah(q) {
-  const dropdown = document.getElementById('surahDropdown');
-  const qLower = q.toLowerCase().trim();
-  if (!qLower) { dropdown.style.display='none'; return; }
+  const dd = document.getElementById('surahDropdown');
+  const qL = q.toLowerCase().trim();
+  if (!qL) { dd.style.display = 'none'; return; }
   const hasil = SENARAI_SURAH
-    .map((s,i) => ({nama:s, no:i+1}))
-    .filter(s => s.nama.toLowerCase().includes(qLower))
-    .slice(0, 8);
-  if (!hasil.length) { dropdown.style.display='none'; return; }
-  dropdown.innerHTML = hasil.map(s =>
-    `<div class="surah-item" onclick="pilihSurah('${s.no}. ${s.nama}')">${s.no}. ${s.nama}</div>`
+    .map((s, i) => ({nama: s, no: i + 1}))
+    .filter(s => s.nama.toLowerCase().includes(qL))
+    .slice(0, 7);
+  if (!hasil.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = hasil.map(s =>
+    `<div class="q-dropdown-item" onclick="pilihSurah(${s.no}, '${s.nama}')">${s.no}. ${s.nama}</div>`
   ).join('');
-  dropdown.style.display = 'block';
+  dd.style.display = 'block';
 }
 
-function pilihSurah(nama) {
-  surahTerpilihSet.add(nama);
+function pilihSurah(no, nama) {
+  surahTerpilihSet.add(no + '. ' + nama);
   renderSurahTerpilih();
   document.getElementById('surahCarian').value = '';
   document.getElementById('surahDropdown').style.display = 'none';
 }
 
-function buangSurah(nama) {
-  surahTerpilihSet.delete(nama);
+function buangSurah(key) {
+  surahTerpilihSet.delete(key);
   renderSurahTerpilih();
 }
 
 function renderSurahTerpilih() {
-  const el = document.getElementById('surahTerpilih');
-  el.innerHTML = [...surahTerpilihSet].map(s =>
-    `<div class="surah-chip">${s}<button onclick="buangSurah('${s}')" title="Buang">×</button></div>`
-  ).join('');
+  document.getElementById('surahTerpilih').innerHTML =
+    [...surahTerpilihSet].map(s =>
+      `<div class="q-chip">${s}<button class="q-chip-x" onclick="buangSurah('${s}')">×</button></div>`
+    ).join('');
 }
 
 function getQuranExtra() {
   const juzu = parseInt(document.getElementById('juzuSlider').value) || 0;
-  const muka = parseInt(document.getElementById('muka-val').textContent) || 0;
+  const muka = parseInt(document.getElementById('mukaVal').textContent) || 0;
   const surah = [...surahTerpilihSet];
   const extras = [];
   if (juzu > 0) extras.push(juzu + " Juzu'");
   if (muka > 0) extras.push(muka + " muka");
-  if (surah.length > 0) extras.push(...surah);
+  surah.forEach(s => extras.push(s));
   return extras;
 }
 
 function resetQuranExtra() {
+  kemaskiniJuzu(0);
   document.getElementById('juzuSlider').value = 0;
-  document.getElementById('juzu-val').textContent = '0';
-  document.getElementById('muka-val').textContent = '0';
+  document.getElementById('mukaVal').textContent = '0';
   document.getElementById('surahCarian').value = '';
   document.getElementById('surahDropdown').style.display = 'none';
   surahTerpilihSet.clear();
   renderSurahTerpilih();
 }
 
-// Tutup dropdown bila klik luar
+// Tutup dropdown bila klik/tap luar
 document.addEventListener('click', e => {
-  if (!e.target.closest('.surah-search-wrap')) {
+  if (!e.target.closest('.q-block')) {
     const dd = document.getElementById('surahDropdown');
     if (dd) dd.style.display = 'none';
   }
