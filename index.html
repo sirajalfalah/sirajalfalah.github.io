@@ -208,6 +208,33 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
       <div class="form-label">C. Bacaan Al-Quran *</div>
       <div class="enum-group" id="grpQuran"></div>
 
+      <!-- Juzu' Slider -->
+      <div class="quran-extra" id="quranExtraBox">
+        <div class="quran-extra-label">Juzu' dibaca hari ini: <span id="juzu-val">0</span> Juzu'</div>
+        <input type="range" id="juzuSlider" min="0" max="30" value="0" class="juzu-slider"
+          oninput="document.getElementById('juzu-val').textContent=this.value">
+        <div class="juzu-ticks"><span>0</span><span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span></div>
+
+        <!-- Mukasurat input -->
+        <div class="quran-extra-label" style="margin-top:14px">Mukasurat dibaca hari ini:</div>
+        <div class="muka-stepper">
+          <button type="button" class="muka-btn" onclick="ubahMuka(-1)">−</button>
+          <span id="muka-val">0</span>
+          <button type="button" class="muka-btn" onclick="ubahMuka(1)">+</button>
+          <span class="muka-unit">muka</span>
+        </div>
+        <div style="font-size:11px;color:#999;margin-top:4px;">Tekan dan tahan untuk tukar cepat</div>
+
+        <!-- Carian Surah -->
+        <div class="quran-extra-label" style="margin-top:14px">Surah yang dibaca (pilihan):</div>
+        <div class="surah-search-wrap">
+          <input type="text" id="surahCarian" placeholder="Cari surah... (contoh: Baqarah)" 
+            class="surah-input" oninput="tapis_surah(this.value)" autocomplete="off">
+          <div id="surahDropdown" class="surah-dropdown" style="display:none"></div>
+        </div>
+        <div id="surahTerpilih" class="surah-terpilih"></div>
+      </div>
+
       <div class="form-label">D. Berjaya Hindari Amalan Buruk *</div>
       <div class="enum-group" id="grpHindari"></div>
 
@@ -298,7 +325,7 @@ let MOD_KAL = 'semua';
 const PILIHAN = {
   solat: ["Subuh","Zuhur","Asar","Maghrib","Isya'"],
   munajat: ["Tahajjud","2 Rakaat Qabliyyah Subuh","Dhuha","4 Rakaat Qabliyyah Zuhur","2 Rakaat Ba'diyyah Zuhur","2 Rakaat Ba'diyyah Maghrib","2 Rakaat Ba'diyyah Isya'","Solat Hajat","Solat Taubat","Puasa Sunat","Solat Tasbih","Berselawat","Berzikir"],
-  quran: ["6 Mukasurat","Tasmi' Halaqah Hifz Al-Quran","1 Juzu'","2 Juzu'","Al-Mulk","Yasin (Malam Jumaat)","Al-Kahfi (Hari Jumaat)","+ al-Ma'thurat"],
+  quran: ["6 Mukasurat","Tasmi' Halaqah Hifz Al-Quran","Al-Mulk","Yasin (Malam Jumaat)","Al-Kahfi (Hari Jumaat)","+ al-Ma'thurat"],
   hindari: ["Bangun Lewat","Datang Kelas Lewat","Berkata Buruk","Tidur Dalam Kelas","Bergaduh","Tidak Siap Kerja Sekolah","Biadab dengan Guru","Melanggar Peraturan Sekolah"]
 };
 
@@ -412,6 +439,14 @@ function tunjukAuthScreen() {
 async function apiGet(url) {
   const r = await fetch(url, {headers: {Authorization: `Bearer ${accessToken}`}});
   if (r.status === 401) { buangToken(); throw new Error('SESI_TAMAT'); }
+  if (r.status === 403) {
+    const errTeks = await r.text();
+    if (errTeks.includes('PERMISSION_DENIED') || errTeks.includes('insufficient')) {
+      buangToken();
+      throw new Error('PERLU_AUTH_SEMULA');
+    }
+    throw new Error(errTeks);
+  }
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -419,6 +454,13 @@ async function apiGet(url) {
 async function apiPut(url, body) {
   const r = await fetch(url, {method:'PUT', headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'}, body: JSON.stringify(body)});
   if (r.status === 401) { buangToken(); throw new Error('SESI_TAMAT'); }
+  if (r.status === 403) {
+    const errTeks = await r.text();
+    if (errTeks.includes('PERMISSION_DENIED') || errTeks.includes('insufficient')) {
+      buangToken(); throw new Error('PERLU_AUTH_SEMULA');
+    }
+    throw new Error(errTeks);
+  }
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -426,6 +468,13 @@ async function apiPut(url, body) {
 async function apiPost(url, body) {
   const r = await fetch(url, {method:'POST', headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'}, body: JSON.stringify(body)});
   if (r.status === 401) { buangToken(); throw new Error('SESI_TAMAT'); }
+  if (r.status === 403) {
+    const errTeks = await r.text();
+    if (errTeks.includes('PERMISSION_DENIED') || errTeks.includes('insufficient')) {
+      buangToken(); throw new Error('PERLU_AUTH_SEMULA');
+    }
+    throw new Error(errTeks);
+  }
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -718,6 +767,103 @@ function dateToKey(d) {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
+
+// ================================================================
+// BACAAN AL-QURAN — FUNGSI EXTRA
+// ================================================================
+const SENARAI_SURAH = [
+  "Al-Fatihah","Al-Baqarah","Ali Imran","An-Nisa","Al-Maidah","Al-Anam","Al-Araf",
+  "Al-Anfal","At-Tawbah","Yunus","Hud","Yusuf","Ar-Rad","Ibrahim","Al-Hijr","An-Nahl",
+  "Al-Isra","Al-Kahfi","Maryam","Ta-Ha","Al-Anbiya","Al-Hajj","Al-Mukminun","An-Nur",
+  "Al-Furqan","Ash-Shuara","An-Naml","Al-Qasas","Al-Ankabut","Ar-Rum","Luqman",
+  "As-Sajdah","Al-Ahzab","Saba","Fatir","Ya-Sin","As-Saffat","Sad","Az-Zumar","Ghafir",
+  "Fussilat","Ash-Shura","Az-Zukhruf","Ad-Dukhan","Al-Jathiyah","Al-Ahqaf","Muhammad",
+  "Al-Fath","Al-Hujurat","Qaf","Adh-Dhariyat","At-Tur","An-Najm","Al-Qamar","Ar-Rahman",
+  "Al-Waqiah","Al-Hadid","Al-Mujadilah","Al-Hashr","Al-Mumtahanah","As-Saf","Al-Jumuah",
+  "Al-Munafiqun","At-Taghabun","At-Talaq","At-Tahrim","Al-Mulk","Al-Qalam","Al-Haqqah",
+  "Al-Maarij","Nuh","Al-Jinn","Al-Muzzammil","Al-Muddaththir","Al-Qiyamah","Al-Insan",
+  "Al-Mursalat","An-Naba","An-Naziat","Abasa","At-Takwir","Al-Infitar","Al-Mutaffifin",
+  "Al-Inshiqaq","Al-Buruj","At-Tariq","Al-Ala","Al-Ghashiyah","Al-Fajr","Al-Balad",
+  "Ash-Shams","Al-Layl","Ad-Duha","Ash-Sharh","At-Tin","Al-Alaq","Al-Qadr","Al-Bayyinah",
+  "Az-Zalzalah","Al-Adiyat","Al-Qariah","At-Takathur","Al-Asr","Al-Humazah","Al-Fil",
+  "Quraysh","Al-Maun","Al-Kawthar","Al-Kafirun","An-Nasr","Al-Masad","Al-Ikhlas",
+  "Al-Falaq","An-Nas"
+];
+
+let surahTerpilihSet = new Set();
+let mukaTimer = null;
+
+function ubahMuka(delta) {
+  const el = document.getElementById('muka-val');
+  let val = parseInt(el.textContent) + delta;
+  if (val < 0) val = 0;
+  if (val > 604) val = 604;
+  el.textContent = val;
+}
+
+function tapis_surah(q) {
+  const dropdown = document.getElementById('surahDropdown');
+  const qLower = q.toLowerCase().trim();
+  if (!qLower) { dropdown.style.display='none'; return; }
+  const hasil = SENARAI_SURAH
+    .map((s,i) => ({nama:s, no:i+1}))
+    .filter(s => s.nama.toLowerCase().includes(qLower))
+    .slice(0, 8);
+  if (!hasil.length) { dropdown.style.display='none'; return; }
+  dropdown.innerHTML = hasil.map(s =>
+    `<div class="surah-item" onclick="pilihSurah('${s.no}. ${s.nama}')">${s.no}. ${s.nama}</div>`
+  ).join('');
+  dropdown.style.display = 'block';
+}
+
+function pilihSurah(nama) {
+  surahTerpilihSet.add(nama);
+  renderSurahTerpilih();
+  document.getElementById('surahCarian').value = '';
+  document.getElementById('surahDropdown').style.display = 'none';
+}
+
+function buangSurah(nama) {
+  surahTerpilihSet.delete(nama);
+  renderSurahTerpilih();
+}
+
+function renderSurahTerpilih() {
+  const el = document.getElementById('surahTerpilih');
+  el.innerHTML = [...surahTerpilihSet].map(s =>
+    `<div class="surah-chip">${s}<button onclick="buangSurah('${s}')" title="Buang">×</button></div>`
+  ).join('');
+}
+
+function getQuranExtra() {
+  const juzu = parseInt(document.getElementById('juzuSlider').value) || 0;
+  const muka = parseInt(document.getElementById('muka-val').textContent) || 0;
+  const surah = [...surahTerpilihSet];
+  const extras = [];
+  if (juzu > 0) extras.push(juzu + " Juzu'");
+  if (muka > 0) extras.push(muka + " muka");
+  if (surah.length > 0) extras.push(...surah);
+  return extras;
+}
+
+function resetQuranExtra() {
+  document.getElementById('juzuSlider').value = 0;
+  document.getElementById('juzu-val').textContent = '0';
+  document.getElementById('muka-val').textContent = '0';
+  document.getElementById('surahCarian').value = '';
+  document.getElementById('surahDropdown').style.display = 'none';
+  surahTerpilihSet.clear();
+  renderSurahTerpilih();
+}
+
+// Tutup dropdown bila klik luar
+document.addEventListener('click', e => {
+  if (!e.target.closest('.surah-search-wrap')) {
+    const dd = document.getElementById('surahDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
 function binaGroup(id, pilihan) {
   const el = document.getElementById(id);
   el.innerHTML = '';
@@ -746,7 +892,8 @@ async function hantar() {
   const quran = getDipilih('grpQuran');
   const hindari = getDipilih('grpHindari');
 
-  if (!solat.length||!munajat.length||!quran.length||!hindari.length) {
+  const quranExtra = getQuranExtra();
+  if (!solat.length||!munajat.length||(!quran.length&&!quranExtra.length)||!hindari.length) {
     tunjukMsg('Sila tandakan sekurang-kurangnya satu pilihan bagi setiap bahagian (A-D).','err');
     return;
   }
@@ -769,7 +916,7 @@ async function hantar() {
       tarikh,
       solat.join(', '),
       munajat.join(', '),
-      quran.join(', '),
+      [...quran, ...getQuranExtra()].join(', '),
       hindari.join(', '),
       catatan,
       '✅ Rekod Sah',
@@ -823,6 +970,7 @@ async function hantar() {
 
 // Kosongkan semua butang terpilih & catatan (dipanggil selepas hantar berjaya)
 function resetBorang() {
+  resetQuranExtra();
   ['grpSolat','grpMunajat','grpQuran','grpHindari'].forEach(id => {
     document.getElementById(id).querySelectorAll('.enum-btn.sel').forEach(b => b.classList.remove('sel'));
   });
