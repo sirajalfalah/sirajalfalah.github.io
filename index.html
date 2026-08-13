@@ -168,6 +168,41 @@ textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-si
 .q-chip{background:var(--g);color:var(--gl);padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
 .q-chip-x{background:rgba(255,255,255,.2);border:none;color:var(--gl);width:18px;height:18px;border-radius:50%;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700;line-height:1;padding:0}
 .q-chip-x:active{background:rgba(255,255,255,.4)}
+
+/* ---- Modal Pencapaian Baharu ---- */
+.notif-overlay{display:none;position:fixed;inset:0;background:rgba(12,46,34,.8);z-index:2000;align-items:center;justify-content:center;padding:20px;animation:fadeIn .3s ease}
+.notif-overlay.show{display:flex}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.notif-box{background:#fff;border-radius:18px;padding:28px 22px;max-width:380px;width:100%;text-align:center;border:2px solid var(--gold);animation:slideUp .35s ease;position:relative;overflow:hidden}
+.notif-box::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--g),var(--gold),var(--g))}
+
+.notif-confetti{font-size:44px;display:block;margin-bottom:8px;animation:bounce .6s ease infinite alternate}
+@keyframes bounce{from{transform:scale(1)}to{transform:scale(1.15)}}
+
+.notif-tajuk{font-size:20px;font-weight:800;color:var(--g);margin-bottom:4px}
+.notif-sub{font-size:13px;color:#888;margin-bottom:16px}
+.notif-badge-wrap{background:linear-gradient(135deg,#fff8e6,#fff3d4);border:1.5px solid var(--gold);border-radius:14px;padding:16px 14px;margin:12px 0}
+.notif-badge-em{font-size:50px;display:block;margin-bottom:6px}
+.notif-badge-nama{font-size:16px;font-weight:700;color:var(--g)}
+.notif-badge-tier{font-size:12px;color:#b8860b;font-weight:600;margin-top:2px}
+.notif-msg{font-size:13.5px;color:#444;line-height:1.6;margin:12px 0;padding:10px 12px;background:#f0f7f0;border-radius:10px;text-align:left}
+.notif-msg-arab{font-family:'Amiri',serif;font-size:16px;text-align:right;direction:rtl;color:var(--g);background:#f9f6ef;padding:8px 12px;border-radius:8px;margin:8px 0;line-height:1.8}
+
+.notif-btn-main{width:100%;padding:13px;background:var(--g);color:var(--gl);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:4px}
+.notif-btn-main:active{opacity:.85}
+.notif-btn-sec{width:100%;padding:10px;background:transparent;color:var(--g);border:1.5px solid var(--g);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:8px}
+.notif-btn-sec:active{background:#eef4f0}
+
+/* ---- Banner galakan (bawah) ---- */
+.galak-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:1500;padding:12px 16px;background:var(--g);color:#fff;animation:slideUpBar .4s ease;box-shadow:0 -3px 12px rgba(0,0,0,.15)}
+.galak-bar.show{display:flex;align-items:center;gap:12px}
+@keyframes slideUpBar{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.galak-bar-em{font-size:24px;flex-shrink:0}
+.galak-bar-teks{flex:1;font-size:13px;line-height:1.4}
+.galak-bar-teks strong{display:block;font-size:14px;color:var(--gl);margin-bottom:2px}
+.galak-bar-x{background:none;border:none;color:rgba(255,255,255,.6);font-size:20px;cursor:pointer;flex-shrink:0;padding:0}
 </style>
 </head>
 <body>
@@ -976,6 +1011,9 @@ async function hantar() {
   const btn = document.getElementById('btnSubmit');
   btn.disabled = true; btn.textContent = 'Menghantar...';
 
+  // Snapshot badge SEBELUM hantar untuk compare selepas
+  const snapSebelumHantar = snapshotBadgeSekarang();
+
   try {
     // Semak rekod sedia ada
     const rekodSediaAda = REKOD_SAYA.find(r => r.tarikhKey === tarikh);
@@ -1024,6 +1062,9 @@ async function hantar() {
     muatDashboard();
     binaBorang(); // refresh badge hijau/kosong pada senarai tarikh
 
+    // Cek pencapaian baharu & galakan
+    await cekDanTunjukNotif(snapSebelumHantar);
+
     // Reset semua pilihan amalan & catatan supaya borang bersih untuk entri seterusnya
     resetBorang();
 
@@ -1056,6 +1097,231 @@ function resetBorang() {
 function tunjukMsg(txt,cls) {
   const el = document.getElementById('msgBox');
   el.textContent = txt; el.className = 'msg '+cls;
+}
+
+
+// ================================================================
+// SISTEM NOTIFIKASI DALAM-APP
+// ================================================================
+
+// Simpan state pencapaian SEBELUM hantar untuk banding selepas hantar
+let snapBadgeSebelum = {};
+
+function snapshotBadgeSekarang() {
+  const snap = {};
+  KATALOG.forEach(b => {
+    const tarikhSet = {};
+    REKOD_SAYA.forEach(r => tarikhSet[r.tarikhKey] = true);
+    let streak = 0, lari = 0, prev = null;
+    Object.keys(tarikhSet).sort().forEach(k => {
+      const rekod = REKOD_SAYA.find(r => r.tarikhKey === k);
+      if (rekod && b.semak(rekod)) {
+        const d = new Date(k + 'T00:00:00');
+        if (prev && (d - prev) === 86400000) lari++; else lari = 1;
+        if (lari > streak) streak = lari;
+        prev = d;
+      }
+    });
+    snap[b.id] = { streak, tahapDicapai: b.tahap.filter(t => streak >= t).length };
+  });
+  return snap;
+}
+
+function cekPencapaianBaharu(snapLama, snapBaru) {
+  // Cari badge yang naik tahap
+  const baharu = [];
+  KATALOG.forEach(b => {
+    const lama = snapLama[b.id] || { tahapDicapai: 0 };
+    const baru = snapBaru[b.id] || { tahapDicapai: 0 };
+    if (baru.tahapDicapai > lama.tahapDicapai) {
+      baharu.push({ ...b, tahapBaru: baru.tahapDicapai, streak: baru.streak });
+    }
+  });
+  return baharu;
+}
+
+const NAMA_TAHAP_NOTIF = ['Bara Api','Pelita Perunggu','Pelita Perak','Pelita Emas','Cahaya Al-Falah'];
+const UCAPAN_TAHAP = [
+  'Kamu telah menyalakan pelita! Teruskan istiqamah.',
+  'MasyaAllah! Konsistensi kamu sungguh membanggakan.',
+  'SubhanAllah! Kamu telah membuktikan kesungguhan hati.',
+  'Allahuakbar! Amalan ini sudah sebati dalam diri kamu.',
+  'Tahniah Cahaya Al-Falah! Kamu adalah inspirasi kepada rakan-rakan.'
+];
+
+function tunjukNotifPencapaian(badgeList) {
+  if (!badgeList.length) return;
+  // Tunjuk yang paling baru/tinggi dahulu
+  const b = badgeList.sort((a, b) => b.tahapBaru - a.tahapBaru)[0];
+  const tahapIdx = b.tahapBaru - 1;
+  const tierNama = NAMA_TAHAP_NOTIF[tahapIdx] || 'Pencapaian';
+
+  document.getElementById('nfConfetti').textContent = b.emoji;
+  document.getElementById('nfTajuk').textContent = 'Tahniah, ' + (USER?.nama?.split(' ')[0] || '') + '!';
+  document.getElementById('nfSub').textContent = 'Pencapaian Baharu Diperoleh ✨';
+  document.getElementById('nfEm').textContent = b.emoji;
+  document.getElementById('nfNama').textContent = b.nama + ' — ' + b.amalan;
+  document.getElementById('nfTier').textContent = '✓ ' + tierNama + ' · ' + b.streak + ' hari berturut';
+
+  // Papar dalil ringkas
+  let msgHtml = '';
+  if (b.dalilJenis === 'hadith') {
+    msgHtml = `<div class="notif-msg-arab">${b.dalilArab}</div><em style="font-size:12px;color:#555;">"${b.dalilTerj}"</em><br><span style="font-size:11px;color:#999;margin-top:4px;display:block;">${b.dalilSumber}</span>`;
+  } else {
+    msgHtml = `<div class="notif-msg-arab">${b.dalilArab}</div><em style="font-size:12px;color:#555;">"${b.dalilTerj}"</em><br><span style="font-size:11px;color:#999;margin-top:4px;display:block;">Surah ${b.dalilSurah}</span>`;
+  }
+  document.getElementById('nfMsg').innerHTML = msgHtml;
+
+  document.getElementById('notifPencapaian').classList.add('show');
+}
+
+function tutupNotifPencapaian(pergiBadge) {
+  document.getElementById('notifPencapaian').classList.remove('show');
+  if (pergiBadge) {
+    // Pergi ke tab dashboard dan scroll ke badge
+    tukarPanel('dash');
+    setTimeout(() => {
+      const el = document.getElementById('badgeEarned');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  }
+}
+
+// ----------------------------------------------------------------
+// GALAKAN: Hampir dapat pencapaian
+// ----------------------------------------------------------------
+function cekHampirPencapaian() {
+  const tarikhSet = {};
+  REKOD_SAYA.forEach(r => tarikhSet[r.tarikhKey] = true);
+
+  let kandidat = [];
+  KATALOG.forEach(b => {
+    let streak = 0, lari = 0, prev = null;
+    Object.keys(tarikhSet).sort().forEach(k => {
+      const rekod = REKOD_SAYA.find(r => r.tarikhKey === k);
+      if (rekod && b.semak(rekod)) {
+        const d = new Date(k + 'T00:00:00');
+        if (prev && (d - prev) === 86400000) lari++; else lari = 1;
+        if (lari > streak) streak = lari;
+        prev = d;
+      }
+    });
+    b._streakSekarang = streak;
+
+    // Cari tahap yang akan datang
+    const tahapSeterusnya = b.tahap.find(t => streak < t);
+    if (tahapSeterusnya) {
+      const kurang = tahapSeterusnya - streak;
+      if (kurang <= 3 && kurang > 0) {
+        kandidat.push({ b, kurang, tahapSeterusnya });
+      }
+    }
+  });
+
+  if (!kandidat.length) return;
+
+  // Pilih yang paling hampir
+  kandidat.sort((a, b) => a.kurang - b.kurang);
+  const { b, kurang, tahapSeterusnya } = kandidat[0];
+
+  const sekarang = Date.now();
+  const kunciLS = 'galak_hampir_' + b.id + '_' + tahapSeterusnya;
+  const lastTunjuk = localStorage.getItem(kunciLS);
+  // Jangan tunjuk lebih dari sekali sehari untuk badge yang sama
+  if (lastTunjuk && (sekarang - parseInt(lastTunjuk)) < 18 * 3600 * 1000) return;
+  localStorage.setItem(kunciLS, sekarang.toString());
+
+  const msg = kurang === 1
+    ? `Hanya 1 hari lagi untuk capai "${b.nama}"! Jangan putus hari ni.`
+    : `${kurang} hari lagi untuk capai "${b.nama}"! Kamu hampir sampai.`;
+
+  tunjukGalak(b.emoji, 'Hampir Dapat Pencapaian!', msg);
+}
+
+// ----------------------------------------------------------------
+// GALAKAN: Aktiviti yang jarang dibuat
+// ----------------------------------------------------------------
+function cekAktivitiBiasBaik() {
+  if (!REKOD_SAYA.length) return;
+
+  // Kira frekuensi setiap amalan 30 hari
+  const had30 = new Date(Date.now() - 30 * 86400000);
+  const rekod30 = REKOD_SAYA.filter(r => new Date(r.tarikhKey + 'T00:00:00') >= had30);
+
+  if (rekod30.length < 3) return; // data kurang, jangan tunjuk
+
+  const kira = {};
+  const semuaAmalan = [...PILIHAN.munajat];
+  semuaAmalan.forEach(a => kira[a] = 0);
+
+  rekod30.forEach(r => {
+    (r.munajat || []).forEach(a => { if (kira.hasOwnProperty(a)) kira[a]++; });
+  });
+
+  // Cari amalan munajat yang paling jarang (< 30% daripada hari ada rekod)
+  const threshold = Math.max(2, rekod30.length * 0.3);
+  const jarang = semuaAmalan.filter(a => kira[a] < threshold && kira[a] >= 0);
+
+  if (!jarang.length) return;
+
+  // Pilih secara rawak dari yang jarang
+  const pilih = jarang[Math.floor(Math.random() * jarang.length)];
+
+  // Cari badge berkaitan
+  const badgeKaitan = KATALOG.find(b => b.semak({
+    solat: PILIHAN.solat, munajat: [pilih], quran: ['6 Mukasurat'], hindari: []
+  }));
+
+  const sekarang = Date.now();
+  const kunciLS = 'galak_jarang_' + pilih.replace(/\s/g, '_');
+  const lastTunjuk = localStorage.getItem(kunciLS);
+  if (lastTunjuk && (sekarang - parseInt(lastTunjuk)) < 24 * 3600 * 1000) return;
+  localStorage.setItem(kunciLS, sekarang.toString());
+
+  const emoji = badgeKaitan ? badgeKaitan.emoji : '💡';
+  const dalilRingkas = badgeKaitan ? `"${badgeKaitan.dalilTerj.substring(0, 80)}..."` : '';
+  const msg = `Kamu jarang lakukan "${pilih}" akhir-akhir ini. ${dalilRingkas ? dalilRingkas + ' ' : ''}Cuba amalkan hari ini!`;
+
+  tunjukGalak(emoji, 'Jangan Lupa ' + pilih, msg);
+}
+
+function tunjukGalak(em, tajuk, teks) {
+  document.getElementById('galakEm').textContent = em;
+  document.getElementById('galakTajuk').textContent = tajuk;
+  document.getElementById('galakTeks').textContent = teks;
+  const bar = document.getElementById('galakBar');
+  bar.classList.add('show');
+  // Auto-hilang selepas 10 saat
+  clearTimeout(window._galakTimer);
+  window._galakTimer = setTimeout(() => tutupGalak(), 10000);
+}
+
+function tutupGalak() {
+  document.getElementById('galakBar').classList.remove('show');
+}
+
+// ----------------------------------------------------------------
+// INTEGRASI: Panggil selepas hantar berjaya
+// ----------------------------------------------------------------
+async function cekDanTunjukNotif(snapLama) {
+  // Kira semula badge dengan data terbaru
+  const snapBaru = snapshotBadgeSekarang();
+  const pencapaianBaharu = cekPencapaianBaharu(snapLama, snapBaru);
+
+  if (pencapaianBaharu.length) {
+    // Delay sikit supaya animation submit selesai dulu
+    setTimeout(() => tunjukNotifPencapaian(pencapaianBaharu), 800);
+  } else {
+    // Tiada pencapaian baharu — tunjuk galakan lain secara bergantian
+    // 50% hampir pencapaian, 50% aktiviti jarang
+    setTimeout(() => {
+      if (Math.random() < 0.6) {
+        cekHampirPencapaian();
+      } else {
+        cekAktivitiBiasBaik();
+      }
+    }, 1200);
+  }
 }
 
 // ================================================================
@@ -1376,6 +1642,38 @@ if ('serviceWorker' in navigator) {
 
 <!-- Google Identity Services -->
 <script src="https://accounts.google.com/gsi/client" onload="onGisLoad()" async></script>
+
+
+<!-- ============================================================ -->
+<!-- MODAL PENCAPAIAN BAHARU -->
+<!-- ============================================================ -->
+<div class="notif-overlay" id="notifPencapaian">
+  <div class="notif-box">
+    <span class="notif-confetti" id="nfConfetti">🏆</span>
+    <div class="notif-tajuk" id="nfTajuk">Tahniah!</div>
+    <div class="notif-sub" id="nfSub">Pencapaian Baharu Diperoleh</div>
+    <div class="notif-badge-wrap" id="nfBadgeWrap">
+      <span class="notif-badge-em" id="nfEm">⭐</span>
+      <div class="notif-badge-nama" id="nfNama"></div>
+      <div class="notif-badge-tier" id="nfTier"></div>
+    </div>
+    <div class="notif-msg" id="nfMsg"></div>
+    <button class="notif-btn-main" onclick="tutupNotifPencapaian(true)">Lihat Semua Pencapaian Saya →</button>
+    <button class="notif-btn-sec" onclick="tutupNotifPencapaian(false)">Teruskan</button>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- BANNER GALAKAN (bawah skrin) -->
+<!-- ============================================================ -->
+<div class="galak-bar" id="galakBar">
+  <span class="galak-bar-em" id="galakEm">💡</span>
+  <div class="galak-bar-teks">
+    <strong id="galakTajuk"></strong>
+    <span id="galakTeks"></span>
+  </div>
+  <button class="galak-bar-x" onclick="tutupGalak()">×</button>
+</div>
 
 </body>
 </html>
